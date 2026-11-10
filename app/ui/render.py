@@ -37,6 +37,8 @@ def agent_panel(agent: Agent | None, mode: str) -> str:
               f'<span class="badge">plan v{agent.plan.version}</span>',
               f'<span class="badge">{e(agent.plan.created_by)}</span>',
               f'<span class="badge">LLM calls: {agent.llm_calls}</span>']
+    if agent.waiting_for_customer:
+        badges.append('<span class="badge live">waiting for the customer</span>')
     if agent.unhealthy_sources:
         badges.append(f'<span class="badge bad">unhealthy: {e(", ".join(sorted(agent.unhealthy_sources)))}</span>')
     rows = []
@@ -47,12 +49,13 @@ def agent_panel(agent: Agent | None, mode: str) -> str:
                     f'<span><code>{e(s.tool)}</code> <span style="font-size:12px">{e(args)}</span>'
                     f'<span class="desc">{e(s.description)}</span></span>{tags}</li>')
     chat = []
-    for m in agent.sim.outbox[-3:]:
+    for m in agent.sim.outbox[-5:]:
+        if m["kind"] == "customer":
+            who = "You" if agent.human else "Customer"
+            chat.append(f'<div class="bubble c" style="align-self:flex-end">{who}: {e(m["en"])}</div>')
+            continue
         cls = "q" if m["kind"] == "question" else ""
         chat.append(f'<div class="bubble {cls}">{e(m["en"])}<div class="ar" dir="rtl">{e(m["ar"])}</div></div>')
-    reply = agent.world.get("customer.reply")
-    if reply:
-        chat.append(f'<div class="bubble q" style="align-self:flex-end">Customer: {e(reply)}</div>')
     out = ""
     if agent.outcome:
         o = agent.outcome
@@ -107,6 +110,10 @@ def status_line(session: Session | None) -> str:
     if session.status == "planning":
         return "Planning: the LLM is drafting the initial plan (both agents get the same plan)…"
     if session.status == "running":
+        waiting = [LABELS[m][0] for m, a in session.agents.items() if a.waiting_for_customer and a.human and not a.finished]
+        if waiting:
+            return (f"**{' and '.join(waiting)} {'is' if len(waiting) == 1 else 'are'} waiting for your reply as the customer.** "
+                    "Type it below (say no, or ask for something different, and see who listens). No reply in 90 s counts as no.")
         return f"Running · session `{session.id}` · inject your own event below to break the plan live."
     return f"Finished · session `{session.id}` · every event, plan version and revision is stored in the database."
 

@@ -16,7 +16,7 @@ from typing import Any
 from app.core.models import Assumption, BrokenAssumption, Event, Mission, Plan, Step
 from app.core.world import AssumptionMonitor, WorldModel
 from app.llm.client import LLMClient, Observer
-from app.sim.tools import CANCELLABLE, TOOLS, catalog_text, norm_time
+from app.sim.tools import CANCELLABLE, CONSENT_TOOLS, TOOLS, catalog_text, consent_assumption, norm_time
 
 log = logging.getLogger(__name__)
 
@@ -85,6 +85,9 @@ class Planner:
                 [{"step": b.step_tool, "assumption": b.assumption.describe(), "why": b.assumption.why, "actual": b.actual} for b in broken],
                 ensure_ascii=False, default=str),
             f"Current beliefs: {json.dumps(world.snapshot(), ensure_ascii=False, default=str)}",
+            f"Latest customer reply: {world.get('customer.reply')!r} (classified by code as: {world.get('customer.consent')}). "
+            "If the customer said no or asked for something different, follow their answer: re-check availability for what "
+            "they asked and ask them to confirm, or hand off to a human. Never act against their last answer.",
             "Re-plan the remaining work so the mission still succeeds safely. If you abandon a held table, release it first. "
             "If the customer must accept a change to what they asked for, ask them before confirming.",
             REPLAN_SCHEMA,
@@ -120,6 +123,8 @@ def build_step(tool: str, args: dict[str, Any], description: str = "", extra: li
     if "time" in clean:
         clean["time"] = norm_time(clean["time"])
     assumptions = list(spec.contract(clean))
+    if tool in CONSENT_TOOLS:
+        assumptions.append(consent_assumption())
     seen = {(x.key, x.op, json.dumps(x.value, sort_keys=True, default=str)) for x in assumptions}
     for a in extra or []:
         try:
@@ -160,10 +165,12 @@ def validate(raw_steps: list[dict[str, Any]], mission: Mission, world: WorldMode
             changed = s.args["branch"] != mission.customer.get("branch") or s.args["time"] != mission.customer.get("time")
             if changed and not asked:
                 raise PlanError("invariant: booking differs from the request and the customer was not asked")
-        if s.irreversible:
-            broken = [b for b in AssumptionMonitor.broken([s], world) if b.assumption.origin == "tool_contract"]
-            if broken:
-                raise PlanError(f"{s.tool} contract already false: {broken[0].assumption.describe()} (actual {broken[0].actual!r})")
+    irreversible_ids = {s.id for s in steps if s.irreversible}
+    broken = [b for b in AssumptionMonitor.broken(steps, world)  # ordered: a question earlier in the plan refreshes consent
+              if b.step_id in irreversible_ids and b.assumption.origin == "tool_contract"]
+    if broken:
+        b = broken[0]
+        raise PlanError(f"{b.step_tool} contract already false: {b.assumption.describe()} (actual {b.actual!r})")
     return steps
 
 
@@ -198,6 +205,24 @@ def fallback_replan(mission: Mission, world: WorldModel, completed: list[Step],
                     broken: list[BrokenAssumption]) -> tuple[list[Step], str, str]:
     c = mission.customer
     what = "; ".join(f"{b.assumption.describe()} is no longer true (now {b.actual!r})" for b in broken) or "the world changed"
+    if world.get("customer.consent") == "no":
+        reply = str(world.get("customer.reply") or "")
+        steps = []
+        hold = world.get("booking.active_hold")
+        if hold:
+            hb, ht = str(hold).split("@")
+            steps.append(build_step("release_hold", {"branch": hb, "time": ht}))
+        steps += [
+            build_step("create_handoff", {"team": "support", "reason": f"Customer declined the proposal: {reply[:160]}"}),
+            build_step("notify_customer", {
+                "message_en": f"Understood, {c['name']}. I won't go ahead with that. A colleague will contact you shortly to sort it out.",
+                "message_ar": f"تمام {c['name_ar']}، لن أكمل هذا الإجراء. سيتواصل معك أحد زملائنا قريباً لترتيب طلبك.",
+            }),
+        ]
+        en = (f"I changed my mind because the customer answered {reply[:80]!r}. I will not act against their answer, "
+              "so I am handing the case to a colleague with the full context.")
+        ar = "غيّرت الخطة لأن العميل رفض الاقتراح. لن أتصرف ضد رغبته، وسأحوّل الحالة لزميل مع كامل التفاصيل."
+        return steps, en, ar
     if mission.kind == "refund":
         oid = c["order_id"]
         status = world.get(f"order.{oid}.status")

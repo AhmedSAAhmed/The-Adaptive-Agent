@@ -87,6 +87,7 @@ li.st-skipped {{ opacity:.45; text-decoration:line-through; }} li.st-blocked .ic
 .chat {{ margin-top:14px; display:flex; flex-direction:column; gap:6px; }}
 .bubble {{ background:#E7F7EE; border:1px solid #CBEBD8; padding:8px 10px; font-size:13px; max-width:92%; }}
 .bubble.q {{ background:var(--surface); border-color:var(--line); }}
+.bubble.c {{ background:var(--accent); border-color:var(--ink); }}
 .bubble .ar, .rtl {{ direction:rtl; text-align:right; font-family:'Noto Naskh Arabic','Segoe UI',Tahoma,sans-serif; color:var(--muted); margin-top:4px; }}
 .timeline {{ list-style:none; margin:0; padding:0; border-top:1px solid var(--line); }}
 .timeline li {{ display:grid; grid-template-columns:64px 1fr; gap:12px; padding:14px 0; border-bottom:1px solid var(--line); }}

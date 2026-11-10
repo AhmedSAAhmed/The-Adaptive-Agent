@@ -6,6 +6,7 @@ a lookup plus a predicate.
 """
 from __future__ import annotations
 
+import re
 import time
 from collections import defaultdict, deque
 from typing import Any
@@ -35,6 +36,45 @@ class WorldModel:
         return {k: v["value"] for k, v in sorted(self._beliefs.items())}
 
 
+CONSENT_KEY = "customer.consent"
+_NO = ["no", "nope", "not", "don't", "dont", "do not", "cancel", "instead", "rather", "prefer", "change", "different",
+       "too far", "make it", "can't", "cannot", "won't", "لا", "مو ", "ما ابغى", "ما أبغى", "مابي", "ما يناسب", "بدل", "غير", "ألغ", "الغ"]
+_YES = ["yes", "yeah", "yep", "ok", "okay", "sure", "fine", "go ahead", "confirm", "works", "perfect", "sounds good",
+        "نعم", "ايوه", "أيوه", "تمام", "موافق", "اوكي", "أوكي", "يناسب", "طيب", "اكد", "أكد", "ماشي"]
+
+
+_AR_PREFIX = ("ألغ", "الغ", "يناسب", "اكد", "أكد", "موافق")
+
+
+def _has(words: list[str], t: str) -> bool:
+    exact = re.findall(r"[ء-ي]+", t)
+    tokens = exact + [tok[1:] for tok in exact if tok.startswith(("و", "ف")) and len(tok) > 3]  # never strip "ولا"
+    for w in words:
+        w = w.strip()
+        if w.isascii():
+            if re.search(rf"(?<![a-z']){re.escape(w)}(?![a-z])", t):
+                return True
+        elif " " in w:
+            if w in t:
+                return True
+        elif w in _AR_PREFIX:
+            if any(tok.startswith(w) for tok in tokens):
+                return True
+        elif w in (exact if w == "لا" else tokens):
+            return True
+    return False
+
+
+def classify_reply(text: str) -> str:
+    """yes / no / info. Deterministic on purpose: consent must not depend on an LLM's mood."""
+    t = f" {str(text).lower().strip()} "
+    if t.strip().startswith("(no reply"):
+        return "no"
+    if _has(_NO, t):
+        return "no"
+    return "yes" if _has(_YES, t) else "info"
+
+
 SELF_PREFIXES = ("booking.",)  # state the agent itself produces (holds, confirmations)
 
 
@@ -54,10 +94,13 @@ class AssumptionMonitor:
     def broken(steps: list[Step], world: WorldModel, only_key: str | None = None,
                include_self: bool = False) -> list[BrokenAssumption]:
         found: list[BrokenAssumption] = []
+        ask_ahead = False  # a not-yet-sent question will refresh the customer's consent before later steps run
         for step in steps:
             if step.status not in ("pending", "waiting"):
                 continue
             for a in step.assumptions:
+                if a.key == CONSENT_KEY and ask_ahead:
+                    continue
                 if only_key is not None and a.key != only_key:
                     continue
                 if is_self_state(a.key) and not include_self:
@@ -65,6 +108,8 @@ class AssumptionMonitor:
                 actual = world.get(a.key)
                 if a.holds(actual) is False:
                     found.append(BrokenAssumption(step_id=step.id, step_tool=step.tool, assumption=a, actual=actual))
+            if step.tool == "ask_customer" and step.status == "pending":
+                ask_ahead = True
         return found
 
     @staticmethod

@@ -10,4 +10,4 @@ Setup: open the live URL a minute early (free tier cold start). Scenario A selec
 | 40–50 s | "I changed my mind because…" card | "Every revision says what changed, which assumption broke, and what it does instead, in English and Arabic, and it's stored in Postgres." |
 | 50–75 s | Run **C** | "Now the failure test: a broken courier integration flips the status every second. The naive agent believes it and thrashes. The guarded agent confirms against the system of record, ignores the noise, flags the source after three flips, and still refunds correctly." |
 | 75–85 s | Architecture tab, then `curl` to `/api/events` | "Plan, execute, observe, re-evaluate. Events come in by webhook, so anyone can break a run live." |
-| 85–90 s | Run history / repo | "Code, traces and tests are in the repo." |
+| 85–90 s | Try it yourself tab: reply "No, too far" | "And you can try your own case: say no to the agent and only the adaptive one listens. Code, traces and tests are in the repo." |

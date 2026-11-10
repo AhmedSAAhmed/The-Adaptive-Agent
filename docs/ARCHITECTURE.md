@@ -39,6 +39,9 @@ flowchart LR
 - Change detection is a dictionary lookup plus a predicate (`Assumption.holds`), not an LLM call. The LLM is called only after code has proven an assumption false.
 - The same event that breaks the adaptive plan is delivered to the baseline, which ignores it. The difference in outcome is caused only by observing and re-evaluating.
 
+## Customers are an event source
+A WhatsApp reply arrives as `customer.reply`. Code classifies it (`classify_reply`: yes / no / info, English and Arabic) into `customer.consent`. `cancel_order`, `issue_refund`, `issue_voucher` and `confirm_booking` all carry the contract `customer.consent != "no"`. A "no" therefore breaks an assumption exactly like a courier webhook does, and the agent re-plans (with the reply in the prompt) or hands off. A question still ahead in the plan refreshes consent, so the monitor ignores consent for steps behind an unsent `ask_customer`. In **Try it yourself** a human plays the customer; 90 s of silence counts as no.
+
 ## Where assumptions come from
 1. **Tool contracts** (hard, owned by code): `cancel_order` requires `order.status in [placed, preparing]`; `confirm_booking` requires the branch open ≥ 2 h after the slot and an active hold.
 2. **Planner assumptions** (soft, proposed by the LLM): extra beliefs the plan relies on. Duplicates of contracts are dropped.

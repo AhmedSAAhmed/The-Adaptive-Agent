@@ -33,7 +33,8 @@ class Scenario:
     world_seed: dict[str, Any]
     events: list[ScriptedEvent]
     modes: tuple[Mode, Mode] = ("baseline", "adaptive")
-    customer: Callable[[str], str] = field(default=lambda q: "Yes, please go ahead.")
+    # Simulated customer persona. None = a human (the judge) answers in the chat box.
+    customer: Callable[[str], str] | None = field(default=lambda q: "Yes, please go ahead.")
 
 
 REFUND_POLICY = [
@@ -48,7 +49,8 @@ REFUND_INVARIANTS = [
 ]
 
 
-def _refund(sid: str, name: str, name_ar: str, oid: str, total: float, request: str) -> tuple[Mission, dict[str, Any], dict[str, Any]]:
+def _refund(sid: str, name: str, name_ar: str, oid: str, total: float, request: str,
+            items: list[str] | None = None) -> tuple[Mission, dict[str, Any], dict[str, Any]]:
     mission = Mission(
         id=sid, kind="refund", title="Cancel order and refund",
         goal="Resolve the cancellation request correctly: refund only if the food never left, otherwise keep the customer whole another way.",
@@ -57,7 +59,7 @@ def _refund(sid: str, name: str, name_ar: str, oid: str, total: float, request: 
         policy=REFUND_POLICY, invariants=REFUND_INVARIANTS, max_revisions=3,
     )
     sim = {"orders": {oid: {"status": "preparing", "total": total, "currency": "SAR", "restaurant": "Najd Kitchen, Olaya",
-                            "items": ["2x Chicken Mandi", "Kunafa"]}}}
+                            "items": items or ["2x Chicken Mandi", "Kunafa"]}}}
     return mission, sim, {f"order.{oid}.status": "preparing", f"order.{oid}.total": total}
 
 
@@ -73,20 +75,36 @@ _a_mission, _a_sim, _a_world = _refund("A", "Sara", "سارة", "ORD-7781", 186.
 _c_mission, _c_sim, _c_world = _refund("C", "Omar", "عمر", "ORD-9902", 142.0,
                                        "السلام عليكم، أبغى ألغي الطلب ORD-9902 وأسترجع المبلغ لو سمحت")
 
-_b_mission = Mission(
-    id="B", kind="booking", title="Book a table",
-    goal="Get the guest a table that will actually be served, and never promise one that can't be.",
-    request="أبغى أحجز طاولة لـ 6 أشخاص الساعة 8 الليلة في فرع العليا (table for 6 at 8pm tonight, Olaya branch)",
-    customer={"name": "Abdullah", "name_ar": "عبدالله", "branch": "olaya", "branch_ar": "العليا", "time": "20:00", "party_size": 6,
-              "alternatives": ["king_fahd"], "alternatives_ar": ["طريق الملك فهد"], "channel": "whatsapp", "languages": ["ar", "en"]},
-    policy=["A booking needs the branch open at least 2 hours after the start time.",
-            "Hold seats before asking the guest anything; release holds you abandon.",
-            "If the branch or time must change, the guest must agree before you confirm.",
-            "Nearby alternative branch: king_fahd (Arabic: طريق الملك فهد)."],
-    invariants=["Never confirm a table the branch cannot serve.", "Never change the booking without the guest's yes.",
-                "Never leave abandoned holds blocking seats."],
-    max_revisions=3,
-)
+BRANCHES = {  # branch id -> (English name, Arabic name, open_until)
+    "olaya": ("Olaya", "العليا", "23:30"),
+    "king_fahd": ("King Fahd Road", "طريق الملك فهد", "23:59"),
+    "al_malqa": ("Al Malqa", "الملقا", "23:00"),
+}
+
+
+def booking_mission(sid: str, name: str, name_ar: str, branch: str, time_: str, party: int, request: str,
+                    alternatives: list[str]) -> Mission:
+    alt_text = ", ".join(f"{a} (Arabic: {BRANCHES[a][1]})" for a in alternatives)
+    return Mission(
+        id=sid, kind="booking", title="Book a table",
+        goal="Get the guest a table that will actually be served, and never promise one that can't be.",
+        request=request,
+        customer={"name": name, "name_ar": name_ar, "branch": branch, "branch_ar": BRANCHES[branch][1], "time": time_,
+                  "party_size": party, "alternatives": alternatives, "alternatives_ar": [BRANCHES[a][1] for a in alternatives],
+                  "channel": "whatsapp", "languages": ["ar", "en"]},
+        policy=["A booking needs the branch open at least 2 hours after the start time.",
+                "Hold seats before asking the guest anything; release holds you abandon.",
+                "If the branch or time must change, the guest must agree before you confirm.",
+                f"Nearby alternative branches: {alt_text}."],
+        invariants=["Never confirm a table the branch cannot serve.", "Never change the booking without the guest's yes.",
+                    "Never leave abandoned holds blocking seats.", "Never act against the customer's last answer."],
+        max_revisions=3,
+    )
+
+
+_b_mission = booking_mission(
+    "B", "Abdullah", "عبدالله", "olaya", "20:00", 6,
+    "أبغى أحجز طاولة لـ 6 أشخاص الساعة 8 الليلة في فرع العليا (table for 6 at 8pm tonight, Olaya branch)", ["king_fahd"])
 _b_sim = {"branches": {
     "olaya": {"name": "Olaya", "open_until": "23:30", "slots": {"20:00": 8, "20:30": 6}},
     "king_fahd": {"name": "King Fahd Road", "open_until": "23:59", "slots": {"20:00": 10, "20:30": 10}},

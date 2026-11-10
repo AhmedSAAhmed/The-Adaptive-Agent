@@ -19,7 +19,7 @@ from typing import Any, Callable
 
 from app.core.models import BrokenAssumption, Event, Mission, Mode, Plan, Revision, Step
 from app.core.planner import Planner, build_step
-from app.core.world import AssumptionMonitor, FlapDetector, WorldModel
+from app.core.world import CONSENT_KEY, AssumptionMonitor, FlapDetector, WorldModel, classify_reply
 from app.sim.audit import audit
 from app.sim.systems import SimSystems
 from app.sim.tools import TOOLS
@@ -38,7 +38,8 @@ class Agent:
         self.plans: list[Plan] = [plan.model_copy(deep=True)]
         self.sim, self.world, self.planner, self.store = sim, world, planner, store
         self.on_change, self.step_seconds = on_change, step_seconds
-        self.customer = customer or (lambda question: "Yes, please go ahead.")
+        self.customer = customer  # None: a human answers through Session.reply()
+        self.human_wait_s = 90.0
         self.inbox: asyncio.Queue[Event] = asyncio.Queue()
         self.events: list[Event] = []
         self.revisions: list[Revision] = []
@@ -97,7 +98,15 @@ class Agent:
     def _on_event(self, ev: Event) -> None:
         if ev.key == "customer.reply":
             self.world.apply(ev)
-            ev.handled_as = "applied"
+            consent = classify_reply(str(ev.value))
+            self.world.set(CONSENT_KEY, consent, "whatsapp")
+            self.sim.outbox.append({"ts": time.time(), "kind": "customer", "en": str(ev.value), "ar": ""})
+            ev.handled_as = f"reply: {consent}"
+            if self.mode != "baseline" and not self._finished:
+                broken = AssumptionMonitor.broken(self.plan.remaining(), self.world, only_key=CONSENT_KEY)
+                if broken:
+                    ev.handled_as = "contradiction"
+                    self.pending = (ev, broken, "event")
             self._wake.set()
             return
         if self._finished:
@@ -202,6 +211,14 @@ class Agent:
     def _next_step(self) -> Step | None:
         return next((s for s in self.plan.steps if s.status == "pending"), None)
 
+    @property
+    def human(self) -> bool:
+        return self.customer is None
+
+    @property
+    def waiting_for_customer(self) -> bool:
+        return any(s.status == "waiting" for s in self.plan.steps)
+
     async def _wait_reply(self, timeout: float = 25.0) -> bool:
         deadline = time.monotonic() + timeout
         while self.world.get("customer.reply") is None:
@@ -220,7 +237,7 @@ class Agent:
     async def _simulate_customer(self) -> None:
         await asyncio.sleep(self.step_seconds * 0.9)
         last = next((m for m in reversed(self.sim.outbox) if m["kind"] == "question"), {"en": "", "ar": ""})
-        reply = self.customer(f"{last['en']} {last['ar']}")
+        reply = self.customer(f"{last['en']} {last['ar']}") if self.customer else "OK"
         await self.publish(Event(source="whatsapp", key="customer.reply", value=reply, note="customer replied"))
 
     async def run(self) -> None:
@@ -277,8 +294,13 @@ class Agent:
             if step.result.get("awaiting"):
                 step.status = "waiting"
                 self._changed()
-                asyncio.create_task(self._simulate_customer())
-                got = await self._wait_reply()
+                if not self.human:
+                    asyncio.create_task(self._simulate_customer())
+                got = await self._wait_reply(self.human_wait_s if self.human else 25.0)
+                if not got and self.pending is None and self.world.get("customer.reply") is None:
+                    # silence is not consent
+                    self._on_event(Event(source="system", key="customer.reply",
+                                         value=f"(no reply within {int(self.human_wait_s if self.human else 25)} s)"))
                 if not got and self.pending is not None:
                     step.status = "done"
                     step.result = {**step.result, "reply": None, "interrupted": True}

@@ -75,14 +75,16 @@ def _cancel_order(sim: SimSystems, world: WorldModel, a: dict[str, Any]) -> dict
 def _issue_refund(sim: SimSystems, world: WorldModel, a: dict[str, Any]) -> dict[str, Any]:
     oid = a["order_id"]
     amount = float(a.get("amount") or sim.orders[oid]["total"])
-    sim.refunds.append({"order_id": oid, "amount": amount, "ts": time.time(), "true_status": sim.orders[oid]["status"]})
+    sim.refunds.append({"order_id": oid, "amount": amount, "ts": time.time(), "true_status": sim.orders[oid]["status"],
+                        "consent": world.get("customer.consent")})
     return {"ok": True, "refunded": amount, "currency": sim.orders[oid]["currency"]}
 
 
 def _issue_voucher(sim: SimSystems, world: WorldModel, a: dict[str, Any]) -> dict[str, Any]:
     pct = min(int(a.get("percent", 15)), 25)
     code = f"DOO{len(sim.vouchers) + 1:03d}{pct}"
-    sim.vouchers.append({"order_id": a["order_id"], "percent": pct, "code": code, "ts": time.time(), "true_status": sim.orders[a["order_id"]]["status"]})
+    sim.vouchers.append({"order_id": a["order_id"], "percent": pct, "code": code, "ts": time.time(),
+                         "true_status": sim.orders[a["order_id"]]["status"], "consent": world.get("customer.consent")})
     return {"ok": True, "voucher": code, "percent": pct}
 
 
@@ -130,7 +132,8 @@ def _confirm_booking(sim: SimSystems, world: WorldModel, a: dict[str, Any]) -> d
     world.set("booking.active_hold", None, "agent")
     world.set("booking.confirmed", f"{b}@{t}", "agent")
     ref = f"BK-{len(sim.bookings) + 1:04d}"
-    sim.bookings.append({"ref": ref, "branch": b, "time": t, "party_size": n, "true_open_until": sim.branches[b]["open_until"]})
+    sim.bookings.append({"ref": ref, "branch": b, "time": t, "party_size": n, "true_open_until": sim.branches[b]["open_until"],
+                         "had_hold": hold is not None, "consent": world.get("customer.consent")})
     return {"ok": True, "booking_ref": ref, "branch": sim.branches[b]["name"], "time": t}
 
 
@@ -161,6 +164,7 @@ def _notify_customer(sim: SimSystems, world: WorldModel, a: dict[str, Any]) -> d
 
 def _ask_customer(sim: SimSystems, world: WorldModel, a: dict[str, Any]) -> dict[str, Any]:
     world.set("customer.reply", None, "agent")
+    world.set("customer.consent", None, "agent")
     sim.send("question", a.get("question_en", ""), a.get("question_ar", ""))
     return {"ok": True, "awaiting": "customer.reply"}
 
@@ -206,6 +210,14 @@ TOOLS: dict[str, ToolSpec] = {
                  {"reason": "str", "team": "str"}, _create_handoff),
     ]
 }
+
+
+CONSENT_TOOLS = {"cancel_order", "issue_refund", "issue_voucher", "confirm_booking"}
+
+
+def consent_assumption() -> Assumption:
+    return Assumption(key="customer.consent", op="ne", value="no", origin="tool_contract",
+                      why="Never act against the customer's last answer.")
 
 
 def catalog_text() -> str:

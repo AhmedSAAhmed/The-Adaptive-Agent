@@ -19,7 +19,9 @@ log = logging.getLogger(__name__)
 
 
 class Session:
-    def __init__(self, scenario: Scenario, planner: Planner, store: Store | None, step_seconds: float) -> None:
+    def __init__(self, scenario: Scenario, planner: Planner, store: Store | None, step_seconds: float,
+                 llm_records: list[dict[str, Any]] | None = None) -> None:
+        self.pre_llm_records = list(llm_records or [])  # e.g. the request-parsing call of a custom run
         self.id = new_id("ss")
         self.scenario = scenario
         self.planner, self.store, self.step_seconds = planner, store, step_seconds
@@ -63,9 +65,9 @@ class Session:
     async def run(self) -> None:
         sc = self.scenario
         if self.store:
-            self.store.session_started(self.id, sc.id)
+            self.store.session_started(self.id, sc.id if sc.id in SCENARIOS else "custom")
         self.notify()
-        llm_records: list[dict[str, Any]] = []  # skipped (circuit-open) attempts are logged but not counted
+        llm_records: list[dict[str, Any]] = list(self.pre_llm_records)  # skipped (circuit-open) attempts are logged, not counted
         plan = await self.planner.initial_plan(sc.mission, WorldModel(sc.world_seed), llm_records.append)
         self.initial_plan = plan
         for mode in sc.modes:
@@ -104,6 +106,14 @@ class Session:
                 agent.sim.apply_truth(se.key, se.value)
             await agent.publish(Event(source=se.source, key=se.key, value=se.value, trust=se.trust, note=se.note))  # type: ignore[arg-type]
 
+    async def reply(self, text: str) -> int:
+        """The human customer answers on WhatsApp: goes to agents waiting for an answer (else to all running)."""
+        running = [a for a in self.agents.values() if not a.finished]
+        targets = [a for a in running if a.waiting_for_customer] or running
+        for a in targets:
+            await a.publish(Event(source="whatsapp", key="customer.reply", value=text[:300], note="customer (you) replied"))
+        return len(targets)
+
     async def inject(self, event: Event, real: bool = True) -> int:
         """External webhook event: fan out to every agent still running."""
         n = 0
@@ -130,9 +140,13 @@ class SessionManager:
     def start(self, scenario_id: str, step_seconds: float | None = None) -> Session:
         if scenario_id not in SCENARIOS:
             raise KeyError(scenario_id)
+        return self.start_scenario(SCENARIOS[scenario_id], step_seconds)
+
+    def start_scenario(self, scenario: Scenario, step_seconds: float | None = None,
+                       llm_records: list[dict[str, Any]] | None = None) -> Session:
         if len(self.running()) >= self.max_running:
             raise RuntimeError("Too many demos running right now, please retry in a few seconds.")
-        s = Session(SCENARIOS[scenario_id], self.planner, self.store, step_seconds or settings.step_seconds)
+        s = Session(scenario, self.planner, self.store, step_seconds or settings.step_seconds, llm_records)
         self.sessions[s.id] = s
         s.task = asyncio.create_task(s.run())
         # keep memory bounded on a 512 MB instance

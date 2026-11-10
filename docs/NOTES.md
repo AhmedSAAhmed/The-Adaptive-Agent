@@ -4,8 +4,9 @@
 1. **Live demo, Scenario A**: the baseline refunds SAR 186 for food already on its way and reports success; the adaptive agent's `cancel_order` contract breaks on the courier webhook and it re-plans to a voucher + ETA.
 2. **Scenario B**: the branch posts an early closure while the table is on hold; the adaptive agent releases the hold, moves to another branch, asks the guest in Arabic and English, then confirms.
 3. **Scenario C (failure test)**: a flapping courier webhook; the naive adaptive agent thrashes, the guarded agent confirms against the system of record and contains it. See `docs/FAILURE_TEST.md`.
-4. **Break it yourself**: during a run, `POST /api/events` (Architecture tab has the `curl`), or use the "Inject a real-world event" panel.
-5. **Traces**: every run has a `trace.md` link; Run history lists stored sessions with audited verdicts.
+4. **Try it yourself** tab: write your own refund or booking request (EN/AR), choose how reality changes, and reply as the customer. Say no and compare who listens.
+5. **Break it yourself**: during a run, `POST /api/events` (Architecture tab has the `curl`), or use the "Inject a real-world event" panel.
+6. **Traces**: every run has a `trace.md` link; Run history lists stored sessions with audited verdicts.
 
 ## Key decisions
 - **Code detects change; the LLM decides what to do next.** Assumptions are typed predicates. Tool contracts are attached by code, so an LLM cannot drop the precondition of a refund.
@@ -13,6 +14,8 @@
 - **Honest comparison.** Same plan, tools and events for both runs; outcomes judged against the system of record, not the agent's beliefs.
 - **Production-style LLM layer.** Groq (gpt-oss-120b) → OpenRouter (Claude Sonnet 5.5) → Gemini → deterministic planner, with timeouts, a circuit breaker and every call logged.
 - **Event-sourced Postgres** for runs, events, plan versions, revisions, steps and LLM calls.
+- **Consent is an assumption, decided by code.** Customer replies are classified deterministically (yes / no / info); the LLM never decides whether the customer agreed.
+- **Judge input is data.** Requests are parsed by the LLM into a typed schema, then clamped by code (order ids, amounts ≤ SAR 2000, known branches, opening hours). Custom runs are rate-limited per IP.
 - **Bilingual by default.** Every customer message in English and Arabic, as DOO serves the GCC.
 
 ## AI tools used

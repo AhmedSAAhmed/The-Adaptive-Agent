@@ -5,8 +5,6 @@ import asyncio
 import json
 import logging
 import os
-import time
-from collections import defaultdict, deque
 from typing import Any, Literal
 
 os.environ.setdefault("GRADIO_ANALYTICS_ENABLED", "False")
@@ -18,8 +16,10 @@ from pydantic import BaseModel, Field
 
 from app.config import settings
 from app.core.models import Event
+from app.core.ratelimit import RateLimited, RateLimiter, custom_runs
 from app.core.session import Session, SessionManager
 from app.scenarios import SCENARIOS
+from app.scenarios.custom import MAX_CHARS, build_custom, parse_request
 from app.store.db import Store, trace_markdown
 from app.ui.app import build_ui
 from app.ui.theme import CSS, HEAD, JS, navy_theme
@@ -38,28 +38,27 @@ class EventIn(BaseModel):
 
 
 class SessionIn(BaseModel):
-    scenario: Literal["A", "B", "C"]
+    scenario: Literal["A", "B", "C"] | None = None
+    request: str | None = Field(default=None, max_length=MAX_CHARS, description="Your own WhatsApp-style request (EN/AR)")
+    twist: Literal["auto", "flapping", "none"] = "auto"
+    human_customer: bool = False  # True: answer the agents via POST /api/sessions/{id}/reply
 
 
-class RateLimiter:
-    """Small in-memory sliding-window limiter for write endpoints (one instance, free tier)."""
+class ReplyIn(BaseModel):
+    text: str = Field(min_length=1, max_length=300)
 
-    def __init__(self, limit: int, window_s: float) -> None:
-        self.limit, self.window_s = limit, window_s
-        self.hits: dict[str, deque[float]] = defaultdict(deque)
 
-    def check(self, who: str) -> None:
-        now, q = time.time(), self.hits[who]
-        while q and now - q[0] > self.window_s:
-            q.popleft()
-        if len(q) >= self.limit:
-            raise HTTPException(429, "rate limit exceeded, slow down")
-        q.append(now)
+def _check(limiter: RateLimiter, request: Request) -> None:
+    try:
+        limiter.check(request.client.host if request.client else "?")
+    except RateLimited as exc:
+        raise HTTPException(429, str(exc)) from exc
 
 
 def session_state(s: Session) -> dict[str, Any]:
     return {
         "id": s.id, "scenario": s.scenario.id, "status": s.status, "version": s.version,
+        "waiting_for_customer": [m for m, a in s.agents.items() if a.waiting_for_customer and not a.finished],
         "agents": {
             mode: {
                 "run_id": a.run_id, "status": a.status, "plan_version": a.plan.version, "planner": a.plan.created_by,
@@ -94,12 +93,32 @@ def create_app() -> FastAPI:
 
     @app.post("/api/sessions")
     async def start_session(body: SessionIn, request: Request) -> dict[str, Any]:
-        writes.check(request.client.host if request.client else "?")
+        _check(writes, request)
+        if not body.scenario and not body.request:
+            raise HTTPException(422, "give either a scenario (A/B/C) or your own request")
+        parsed: dict[str, Any] | None = None
         try:
-            s = manager.start(body.scenario)
+            if body.scenario:
+                s = manager.start(body.scenario)
+            else:
+                _check(custom_runs, request)
+                records: list[dict[str, Any]] = []
+                req = await parse_request(body.request or "", manager.planner.llm, records.append)
+                if req.kind == "out_of_scope":
+                    raise HTTPException(422, "out of scope: this demo agent cancels/refunds orders and books tables")
+                parsed = req.model_dump()
+                s = manager.start_scenario(build_custom(req, body.request or "", body.twist, body.human_customer), llm_records=records)
         except RuntimeError as exc:
             raise HTTPException(429, str(exc)) from exc
-        return {"session_id": s.id, "stream": f"/api/sessions/{s.id}/stream"}
+        return {"session_id": s.id, "stream": f"/api/sessions/{s.id}/stream", "understood": parsed}
+
+    @app.post("/api/sessions/{sid}/reply")
+    async def customer_reply(sid: str, body: ReplyIn, request: Request) -> dict[str, Any]:
+        _check(writes, request)
+        s = manager.sessions.get(sid)
+        if s is None or s.finished:
+            raise HTTPException(409, "session not running")
+        return {"delivered_to": await s.reply(body.text)}
 
     @app.get("/api/sessions")
     async def list_sessions(limit: int = 20) -> list[dict[str, Any]]:
@@ -141,7 +160,7 @@ def create_app() -> FastAPI:
     async def push_event(body: EventIn, request: Request, x_webhook_token: str | None = Header(default=None)) -> dict[str, Any]:
         if settings.webhook_token and x_webhook_token != settings.webhook_token:
             raise HTTPException(401, "invalid webhook token")
-        writes.check(request.client.host if request.client else "?")
+        _check(writes, request)
         s = manager.sessions.get(body.session_id) if body.session_id else manager.latest_running()
         if s is None or s.finished:
             raise HTTPException(409, "no run in progress: start a scenario first (UI or POST /api/sessions)")

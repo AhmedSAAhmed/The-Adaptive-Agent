@@ -10,5 +10,6 @@
 | 6 | GitHub | Push to `AhmedSAAhmed/The-Adaptive-Agent`; no AI co-author trailers. |
 | 7 | Language | Every customer message in English and Arabic. |
 | 8 | Video | Recorded by the owner; no auto-play demo mode. |
+| 9 | Judge input | "Try it yourself" tab (2026-11-10): own request (EN/AR) + chosen twist + human customer replies, scoped to refunds and bookings. Scripted A/B/C stay the default. |
 
 Change detection is never delegated to the LLM: assumptions are predicates, checked by code on each event. The LLM only proposes what to do next, and code validates it.

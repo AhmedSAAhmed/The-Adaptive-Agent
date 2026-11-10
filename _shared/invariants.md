@@ -17,3 +17,5 @@ Enforced in code (`app/core/planner.py` `validate()`, tool contracts in `app/sim
 10. At most 3 re-plans per mission; past that, freeze irreversible steps and hand off to a human.
 11. Every irreversible step re-reads its contract from the system of record right before it runs.
 12. Every plan ends by informing the customer or handing off. Every revision is explained (EN + AR) and stored.
+13. Never act against the customer's last answer: money-moving and confirming tools require `customer.consent != "no"`. Silence is not consent.
+14. A judge's request is data: parsed into a typed schema and clamped by code; out-of-scope requests are declined politely in both languages.

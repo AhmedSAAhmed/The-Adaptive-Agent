@@ -18,6 +18,10 @@ A customer-service *action* agent in the style of [DOO](https://www.doo.ooo) (Wh
 
 Both columns get the same plan, tools and events. Outcomes are audited against the system of record, not the agent's beliefs.
 
+### Try it yourself
+
+The **Try it yourself** tab takes your own WhatsApp-style request, in English or Arabic, e.g. *"Book a table for 4 at 9pm at King Fahd Road"* or *"أبغى ألغي طلبي رقم 4412"*. The LLM extracts a typed request, and code clamps every field. You pick how reality changes (auto, flapping signal, or nothing), and **you answer the agents as the customer**. Say *"No, that branch is too far"* and only the adaptive agent listens: your reply breaks its `customer.consent` assumption, so it re-plans instead of confirming. Silence for 90 s counts as no.
+
 ## How it works
 
 ```
@@ -29,6 +33,7 @@ plan ──► execute ──► observe ──► re-evaluate
 
 - **Assumptions are typed predicates.** Tools carry code-owned contracts (e.g. refunds only for `status in [placed, preparing, cancelled]`). The monitor re-checks only assumptions on the key that changed. No timers, no polling, no re-prompting.
 - **The LLM plans; code validates.** Groq (gpt-oss-120b) → OpenRouter (Claude Sonnet 5.5) → Gemini (3.5 Flash) → deterministic planner, with timeouts and a circuit breaker.
+- **Customer replies are events too.** A deterministic classifier (yes / no / info, EN + AR) sets `customer.consent`; every money-moving or confirming tool carries "never act against the customer's last answer".
 - **Five guards** between a signal and an irreversible action: confirm low-trust signals, flap detection, revision budget, pre-commit re-check, plan validation.
 - **Event-sourced Postgres**: events, plan versions, revisions, steps and LLM calls. Every run exports a `trace.md`.
 
@@ -40,7 +45,7 @@ During a run (UI accordion, or from any terminal):
 curl -X POST https://<your-app>.onrender.com/api/events -H "Content-Type: application/json" -d '{"key": "order.ORD-7781.status", "value": "picked_up", "source": "order_system", "trust": "high"}'
 ```
 
-Other endpoints: `POST /api/sessions` `{"scenario":"A"}`, `GET /api/sessions/{id}/stream` (Server-Sent Events), `GET /api/runs/{id}/trace.md`, `GET /api/sessions`, `GET /health`.
+Other endpoints: `POST /api/sessions` `{"scenario":"A"}` or `{"request":"cancel order 5521, SAR 230","twist":"auto","human_customer":true}`, `POST /api/sessions/{id}/reply` `{"text":"No, make it 21:30"}`, `GET /api/sessions/{id}/stream` (Server-Sent Events), `GET /api/runs/{id}/trace.md`, `GET /api/sessions`, `GET /health`.
 
 ## Run locally
 
