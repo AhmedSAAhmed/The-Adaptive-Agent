@@ -28,7 +28,7 @@ plan ──► execute ──► observe ──► re-evaluate
 ```
 
 - **Assumptions are typed predicates.** Tools carry code-owned contracts (e.g. refunds only for `status in [placed, preparing, cancelled]`). The monitor re-checks only assumptions on the key that changed. No timers, no polling, no re-prompting.
-- **The LLM plans; code validates.** OpenRouter (Claude Sonnet 5.5) → Groq (gpt-oss-120b) → Gemini (3.5 Flash) → deterministic planner, with timeouts and a circuit breaker.
+- **The LLM plans; code validates.** Groq (gpt-oss-120b) → OpenRouter (Claude Sonnet 5.5) → Gemini (3.5 Flash) → deterministic planner, with timeouts and a circuit breaker.
 - **Five guards** between a signal and an irreversible action: confirm low-trust signals, flap detection, revision budget, pre-commit re-check, plan validation.
 - **Event-sourced Postgres**: events, plan versions, revisions, steps and LLM calls. Every run exports a `trace.md`.
 

@@ -1,6 +1,6 @@
 """OpenAI-compatible LLM client with an ordered provider failover chain.
 
-OpenRouter (Claude) -> Groq -> Gemini. Every call has a timeout, is parsed as strict JSON,
+Groq (gpt-oss-120b) -> OpenRouter (Claude) -> Gemini. Every call has a timeout, is parsed as strict JSON,
 and is reported to an observer (persisted to `llm_calls`). If every provider fails, callers
 fall back to the deterministic planner: the demo never depends on one vendor being up.
 """

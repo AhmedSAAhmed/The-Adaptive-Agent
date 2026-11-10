@@ -35,3 +35,14 @@ def test_flap_detector() -> None:
     for i, v in enumerate(["a", "b", "a", "b"]):
         g.record("k", v, now=100 + i * 20)  # slow changes fall out of the window
     assert not g.is_flapping("k")
+
+
+def test_default_llm_chain_puts_groq_first(monkeypatch) -> None:
+    from app import config
+
+    monkeypatch.delenv("LLM_CHAIN", raising=False)
+    for var in ("GROQ_API_KEY", "OPENROUTER_API_KEY", "GEMINI_API_KEY"):
+        monkeypatch.setenv(var, "test-key")
+    assert [p.name for p in config._providers()] == ["groq", "openrouter", "gemini"]
+    monkeypatch.setenv("LLM_CHAIN", "gemini,groq")
+    assert [p.name for p in config._providers()] == ["gemini", "groq"]

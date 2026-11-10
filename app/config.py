@@ -53,7 +53,7 @@ def _providers() -> list[Provider]:
         "groq": ("https://api.groq.com/openai/v1", "GROQ_API_KEY", "GROQ_MODEL", "openai/gpt-oss-120b"),
         "gemini": ("https://generativelanguage.googleapis.com/v1beta/openai/", "GEMINI_API_KEY", "GEMINI_MODEL", "gemini-3.5-flash"),
     }
-    order = [p.strip() for p in _clean(os.getenv("LLM_CHAIN", "openrouter,groq,gemini")).split(",") if p.strip()]
+    order = [p.strip() for p in _clean(os.getenv("LLM_CHAIN", "groq,openrouter,gemini")).split(",") if p.strip()]
     chain: list[Provider] = []
     for name in order:
         if name not in catalog:

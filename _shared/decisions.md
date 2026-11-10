@@ -2,7 +2,7 @@
 
 | # | Question | Decision |
 |---|---|---|
-| 1 | LLM? | Yes, production-style. OpenAI-compatible failover chain: OpenRouter (`anthropic/claude-sonnet-5.5`) → Groq (`openai/gpt-oss-120b`) → Gemini (`gemini-3.5-flash`) → deterministic planner. Circuit breaker per provider. |
+| 1 | LLM? | Yes, production-style. OpenAI-compatible failover chain: Groq (`openai/gpt-oss-120b`) → OpenRouter (`anthropic/claude-sonnet-5.5`) → Gemini (`gemini-3.5-flash`) → deterministic planner. Circuit breaker per provider. Groq made primary on 2026-11-10 (lower latency; OpenRouter credits ran low). Override with `LLM_CHAIN`. |
 | 2 | Scenarios | A refund after dispatch, B branch closes early, C flapping courier signal (failure test). |
 | 3 | Database | Postgres on Render (blueprint-provisioned); SQLite locally. Event-sourced tables. |
 | 4 | ECC / icm-architect | Local tooling only: installed under `.claude/` (gitignored). The ICM structure (`AGENTS.md`, contracts) is committed. |

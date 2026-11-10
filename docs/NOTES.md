@@ -11,13 +11,13 @@
 - **Code detects change; the LLM decides what to do next.** Assumptions are typed predicates. Tool contracts are attached by code, so an LLM cannot drop the precondition of a refund.
 - **Safe points.** Re-planning happens between steps; irreversible steps get a pre-commit re-check against the system of record.
 - **Honest comparison.** Same plan, tools and events for both runs; outcomes judged against the system of record, not the agent's beliefs.
-- **Production-style LLM layer.** OpenRouter (Claude Sonnet 5.5) → Groq → Gemini → deterministic planner, with timeouts, a circuit breaker and every call logged.
+- **Production-style LLM layer.** Groq (gpt-oss-120b) → OpenRouter (Claude Sonnet 5.5) → Gemini → deterministic planner, with timeouts, a circuit breaker and every call logged.
 - **Event-sourced Postgres** for runs, events, plan versions, revisions, steps and LLM calls.
 - **Bilingual by default.** Every customer message in English and Arabic, as DOO serves the GCC.
 
 ## AI tools used
 - Claude Code (Claude Opus 5.5) as a pair programmer for architecture, code, tests and docs.
-- Runtime LLMs: Claude Sonnet 5.5 via OpenRouter, gpt-oss-120b via Groq, Gemini 3.5 Flash.
+- Runtime LLMs: gpt-oss-120b via Groq (primary, low latency), Claude Sonnet 5.5 via OpenRouter, Gemini 3.5 Flash.
 - Firecrawl to research the brief, DOO's product and the Navy theme tokens.
 - Workspace method: icm-architect (folder structure as agent architecture: `AGENTS.md`, stage contracts); selected ECC skills/rules (TDD, verification loop, Python patterns, security review) used locally.
 

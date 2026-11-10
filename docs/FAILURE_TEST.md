@@ -18,7 +18,7 @@ The audit (against the order system of record) marks it **Wrong outcome**: the c
 | Revision budget | At most 3 re-plans per mission. Past that: freeze irreversible steps, hand off to a human with the trace. | `Agent._revise`, `_escalate` |
 | Pre-commit re-check | Right before an irreversible step, its contract is re-read from the system of record, so even a change no event announced cannot slip through. | `Agent._loop` |
 | Validated plans | LLM plans are rebuilt from the tool registry. Unknown tools, refunds above total, vouchers above 25%, confirming a moved booking without asking, or calling an irreversible tool whose contract is already false are rejected → deterministic plan. | `planner.validate` |
-| Provider failover | OpenRouter → Groq → Gemini → deterministic, with a circuit breaker. An LLM outage degrades plan quality, never safety. | `LLMClient` |
+| Provider failover | Groq → OpenRouter → Gemini → deterministic, with a circuit breaker. An LLM outage degrades plan quality, never safety. | `LLMClient` |
 
 Result: the guarded agent cancels and refunds correctly, sends one message, and leaves an ops ticket naming the broken integration.
 

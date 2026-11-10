@@ -48,7 +48,7 @@ flowchart LR
 Event-sourced, append-only tables (`app/store/db.py`): `sessions`, `runs`, `events` (with how each was handled), `plans` (every version), `revisions` (trigger, broken assumptions, reasons EN/AR, deciding planner), `step_log`, `llm_calls` (provider, model, latency, tokens, errors). `GET /api/runs/{id}/trace.md` renders a run as plain text.
 
 ## LLM layer
-OpenAI-compatible failover chain: OpenRouter (Claude Sonnet 5.5) → Groq (gpt-oss-120b) → Gemini (3.5 Flash) → deterministic planner. Each call has a timeout. A provider that returns 401/402/403/429 or times out is skipped for 60 s (circuit breaker). Every attempt is logged in `llm_calls`.
+OpenAI-compatible failover chain: Groq (gpt-oss-120b) → OpenRouter (Claude Sonnet 5.5) → Gemini (3.5 Flash) → deterministic planner. Each call has a timeout. A provider that returns 401/402/403/429 or times out is skipped for 60 s (circuit breaker). Every attempt is logged in `llm_calls`.
 
 ## Fair comparison
 Both runs in a session share the initial plan (planned once), the tool registry, and the scenario's event script, delivered on each run's own clock. Each run gets its own copy of the business systems, so the baseline's refund never leaks into the adaptive run. Outcomes are judged by `app/sim/audit.py` against the **system of record**, not the agent's beliefs. That is how a silent failure becomes visible.
