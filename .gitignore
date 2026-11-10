@@ -1,0 +1,13 @@
+# secrets and local state
+.env
+data/
+*.db
+# local-only agent tooling (ECC + icm-architect skills)
+.claude/
+.agents/
+# python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+.ruff_cache/

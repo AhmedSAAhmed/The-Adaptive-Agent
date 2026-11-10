@@ -1,0 +1,14 @@
+# Decisions - answers to the plan's open questions (2026-11-10)
+
+| # | Question | Decision |
+|---|---|---|
+| 1 | LLM? | Yes, production-style. OpenAI-compatible failover chain: OpenRouter (`anthropic/claude-sonnet-5.5`) → Groq (`openai/gpt-oss-120b`) → Gemini (`gemini-3.5-flash`) → deterministic planner. Circuit breaker per provider. |
+| 2 | Scenarios | A refund after dispatch, B branch closes early, C flapping courier signal (failure test). |
+| 3 | Database | Postgres on Render (blueprint-provisioned); SQLite locally. Event-sourced tables. |
+| 4 | ECC / icm-architect | Local tooling only: installed under `.claude/` (gitignored). The ICM structure (`AGENTS.md`, contracts) is committed. |
+| 5 | Navy theme | Tokens reused; non-commercial demo. |
+| 6 | GitHub | Push to `AhmedSAAhmed/The-Adaptive-Agent`; no AI co-author trailers. |
+| 7 | Language | Every customer message in English and Arabic. |
+| 8 | Video | Recorded by the owner; no auto-play demo mode. |
+
+Change detection is never delegated to the LLM: assumptions are predicates, checked by code on each event. The LLM only proposes what to do next, and code validates it.

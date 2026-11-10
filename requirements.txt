@@ -1,0 +1,7 @@
+fastapi==0.162.2
+uvicorn==0.40.0
+gradio==6.31.0
+openai==3.22.1
+pydantic==2.12.5
+SQLAlchemy==2.0.52
+psycopg[binary]==3.3.8

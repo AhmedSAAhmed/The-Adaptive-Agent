@@ -1,0 +1,13 @@
+[project]
+name = "adaptive-agent"
+version = "1.0.0"
+description = "An agent that notices reality changed and safely changes its mind (DOO Adaptive Agent challenge)."
+requires-python = ">=3.11"
+license = { text = "MIT" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 140

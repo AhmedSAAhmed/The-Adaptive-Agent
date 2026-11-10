@@ -1,0 +1,33 @@
+# Render Blueprint: one free web service + one free Postgres, wired together.
+services:
+  - type: web
+    name: adaptive-agent
+    runtime: python
+    plan: free
+    region: frankfurt
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: GRADIO_ANALYTICS_ENABLED
+        value: "False"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: adaptive-agent-db
+          property: connectionString
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+
+databases:
+  - name: adaptive-agent-db
+    plan: free
+    region: frankfurt
+    databaseName: adaptive_agent
+    user: adaptive_agent
